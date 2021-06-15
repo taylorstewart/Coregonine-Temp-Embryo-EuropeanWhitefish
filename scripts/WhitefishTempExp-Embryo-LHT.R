@@ -1,3 +1,8 @@
+#### CLEAR THE ENVIRONMENT FIRST ---------------------------------------------
+
+rm(list = ls(all.names = TRUE))
+
+
 #### LOAD PACKAGES -----------------------------------------------------------
 
 library(tidyverse)
@@ -15,19 +20,31 @@ library(emmeans)
 
 #### LOAD HATCHING DATA ------------------------------------------------------
 
-hatch <- read_excel("data/Coregonine-Temperature-Experiment-Europe-Hatch.xlsx", sheet = "hatching") %>% 
-  select(population, species_form, family, male, female, female_tl_mm, female_fm_g, male_tl_mm, male_fm_g, block, no, temperature, plate, eye, hatch, dpf, ADD) %>% 
-  mutate(population = factor(population, levels = c("constance", "leman", "bourget"), ordered = TRUE),
-         temperature = factor(temperature, ordered = TRUE, levels = c(7, 9)),
-         female = factor(female),
+hatch.FR <- read_excel("data/Coregonine-Temperature-Experiment-EuropeFrance-Hatch.xlsx", sheet = "hatching") %>% 
+  select(population, species_form, family, male, female, female_tl_mm, female_fm_g, male_tl_mm, male_fm_g, block, no, temperature, plate, eye, hatch, dpf, ADD, include.incubation) %>% 
+  mutate(female = factor(female),
          male = factor(male),
          family = factor(family),
          block = factor(block),
          # Create a variable with population and species combined
-         group = factor(interaction(population, species_form), ordered = TRUE,
-                        levels = c("constance.littoral", "constance.pelagic", "leman.littoral", "bourget.littoral")),
-         trans.dpf = dpf^(1/3),
-         trans.ADD = ADD^(1/3))
+         group = factor(interaction(population, species_form)))
+
+hatch.FI <- read_excel("data/Coregonine-Temperature-Experiment-EuropeFinland-Hatch.xlsx", sheet = "hatching") %>% 
+  select(population, species_form = species, family, male, female, female_tl_mm, female_fm_g, male_tl_mm, male_fm_g, block, no, temperature, plate, eye, hatch, dpf, ADD, include.incubation) %>% 
+  filter(temperature %in% c(6.9, 8), species_form == "lavaretus") %>% 
+  mutate(female = factor(female),
+         male = factor(male),
+         family = factor(family),
+         block = factor(block),
+         # Create a variable with population and species combined
+         group = factor("konnevesi.littoral"))
+
+hatch <- bind_rows(hatch.FR, hatch.FI) %>% 
+  mutate(temperature = factor(temperature, ordered = TRUE, levels = c(6.9, 7, 8, 9), labels = c(7, 7, 9, 9)),
+         group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.littoral", "constance.pelagic", "leman.littoral", "bourget.littoral")),
+         trans.dpf = dpf^(1/4),
+         trans.ADD = ADD^(1/4)) %>% 
+  filter(include.incubation == "y")
 
 
 #### FILTER TO EACH TRAITS' DATASET --------------------------------------------------------------
@@ -38,7 +55,7 @@ hatch.survival <- hatch %>% filter(eye != 0)
 ## filter to only hatched embryos
 hatch.survived <- hatch %>% filter(!is.na(dpf), hatch == 1)
 
-
+4
 #### STATISTICAL ANALYSIS - SURVIVAL -----------------------------------------------------
 
 ## backward elimination to select best model
@@ -64,12 +81,10 @@ hatch.survival.glm.family <- glmer(hatch ~ 1 + temperature + group + temperature
 hatch.survival.glm.female <- glmer(hatch ~ 1 + temperature + group + temperature:group + 
                                      (1|family) + (1|block) + (1|plate), data = hatch.survival, 
                                    family = binomial, control = glmerControl(optimizer = "bobyqa"))
-
 # block
 hatch.survival.glm.block <- glmer(hatch ~ 1 + temperature + group + temperature:group + 
-                                     (1|female) + (1|family) + (1|plate), data = hatch.survival, 
+                                    (1|female) + (1|family) + (1|plate), data = hatch.survival, 
                                    family = binomial, control = glmerControl(optimizer = "bobyqa"))
-
 # plate
 hatch.survival.glm.plate <- glmer(hatch ~ 1 + temperature + group + temperature:group + 
                                     (1|female) + (1|family) + (1|block), data = hatch.survival, 
@@ -90,7 +105,8 @@ anova(hatch.survival.glm.plate, hatch.survival.glm.final)
 
 ## fit full model
 hatch.dpf.glm.full <- lmer(trans.dpf ~ 1 + temperature + group + temperature:group + 
-                           (1|family) + (1|male) + (1|female) + (1|block) + (1|plate), data = hatch.survived)
+                           (1|family) + (1|male) + (1|female) + (1|block) + (1|plate), 
+                           data = hatch.survived)
 
 ## backward elimination to select best model
 hatch.dpf.glm <- step(hatch.dpf.glm.full)
@@ -133,13 +149,12 @@ rand(hatch.ADD.glm.final)
 
 #### CALCULATE MEAN AND SE FOR NA & FI POPULATIONS -----------------------------------------------
 
-temp <- data.frame(group = c("constance.pelagic", "constance.pelagic",
+temp <- data.frame(group = c("konnevesi.littoral", "konnevesi.littoral",
+                             "constance.pelagic", "constance.pelagic",
                              "constance.littoral", "constance.littoral",
                              "leman.littoral", "leman.littoral",
                              "bourget.littoral", "bourget.littoral"),
-                   temperature = factor(c(rep(c(7, 9),2)), ordered = TRUE, levels = c(7, 9)),
-                   temp.treatment = factor(rep(c("Normal", "High"), 4), 
-                                           ordered = TRUE, levels = c("Normal", "High")))
+                   temperature = factor(c(rep(c(7, 9),5)), ordered = TRUE, levels = c(7, 9)))
 
 ## Embryo Survival Overall
 hatch.survival.summary <- hatch %>% filter(eye != 0) %>% 
@@ -158,13 +173,14 @@ hatch.survival.stand <- hatch.survival.summary.family %>% filter(temperature == 
 
 hatch.survival.summary.stand <- hatch.survival.summary.family %>% left_join(hatch.survival.stand) %>% 
   filter(group != "leman.littoral" | family != "F03M13") %>%  ## No data at 7C
-  mutate(survival.diff = 100*((mean.hatch-local.survival)/local.survival)) %>%
+  mutate(survival.diff = 100*((mean.hatch-local.survival)/local.survival)) %>% 
+  filter(!is.nan(survival.diff), survival.diff != Inf) %>%
   group_by(population, temperature, group) %>% 
   summarize(mean.trait.stand = mean(survival.diff),
             se.trait.stand = sd(survival.diff)/sqrt(n())) %>% 
   left_join(temp) %>% 
   mutate(se.trait.stand = ifelse(se.trait.stand == 0, NA, se.trait.stand),
-         group = factor(group, ordered = TRUE, levels = c("constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
+         group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
          trait = "survival")
 
 
@@ -186,12 +202,13 @@ hatch.dpf.stand <- hatch.dpf.summary.family %>% filter(temperature == 7) %>%
 hatch.dpf.summary.stand <- hatch.dpf.summary.family %>% left_join(hatch.dpf.stand) %>% 
   filter(group != "leman.littoral" | family != "F03M13") %>%  ## No data at 7C
   mutate(dpf.diff = 100*((mean.dpf-local.dpf)/local.dpf)) %>%
+  filter(!is.nan(dpf.diff), dpf.diff != Inf) %>%
   group_by(population, temperature, group) %>% 
   summarize(mean.trait.stand = mean(dpf.diff),
             se.trait.stand = sd(dpf.diff)/sqrt(n())) %>% 
   left_join(temp) %>% 
   mutate(se.trait.stand = ifelse(se.trait.stand == 0, NA, se.trait.stand),
-         group = factor(group, ordered = TRUE, levels = c("constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
+         group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
          trait = "dpf")
 
 ## Accumulated Degree-Days
@@ -212,21 +229,22 @@ hatch.ADD.stand <- hatch.ADD.summary.family %>% filter(temperature == 7) %>%
 hatch.ADD.summary.stand <- hatch.ADD.summary.family %>% left_join(hatch.ADD.stand) %>% 
   filter(group != "leman.littoral" | family != "F03M13") %>%  ## No data at 7C
   mutate(ADD.diff = 100*((mean.ADD-local.ADD)/local.ADD)) %>%
+  filter(!is.nan(ADD.diff), ADD.diff != Inf) %>%
   group_by(population, temperature, group) %>% 
   summarize(mean.trait.stand = mean(ADD.diff),
             se.trait.stand = sd(ADD.diff)/sqrt(n())) %>% 
   left_join(temp) %>% 
   mutate(se.trait.stand = ifelse(se.trait.stand == 0, NA, se.trait.stand),
-         group = factor(group, ordered = TRUE, levels = c("constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
+         group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral")),
          trait = "ADD")
 
 ## Combine traits
 traitsOverall.all <- bind_rows(hatch.survival.summary, hatch.dpf.summary, hatch.ADD.summary) %>% 
-  mutate(group = factor(group, ordered = TRUE, levels = c("constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
-                        labels = c("Constance (Pelagic)", "Constance (Littoral)", "Geneva", "Bourget")))
+  mutate(group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
+                        labels = c("Konnevesi ", "Constance (Pelagic) ", "Constance (Littoral) ", "Geneva ", "Bourget")))
 traitsStand.all <- bind_rows(hatch.survival.summary.stand, hatch.dpf.summary.stand, hatch.ADD.summary.stand) %>% 
-  mutate(group = factor(group, ordered = TRUE, levels = c("constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
-                        labels = c("Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
+  mutate(group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
+                        labels = c("Konnevesi", "Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
 
 
 #### VISUALIZATIONS - MEANS ----------------------------------------------------------------------
@@ -242,10 +260,10 @@ plot.survival <- ggplot(filter(traitsOverall.all, trait == "survival"),
                 position = position_dodge(0.17), width = 0.3,
                 size = 0.6, linetype = "solid", show.legend = FALSE) +
   scale_x_discrete(expand = c(0, 0.2)) +
-  scale_y_continuous(limits = c(35, 100), breaks = seq(40, 100, 20), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(00, 100, 20), expand = c(0, 0)) +
   scale_color_grey("combine", start = 0.0, end = 0.8) +
-  scale_shape_manual("combine", values = c(2, 5, 1, 0)) +
-  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid")) +
+  scale_shape_manual("combine", values = c(2, 5, 1, 0, 6)) +
+  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid", "dotdash")) +
   labs(y = "Mean Embryo Survival (%)", x = "Temperature (°C)") +
   theme_bw() +
   theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
@@ -258,7 +276,7 @@ plot.survival <- ggplot(filter(traitsOverall.all, trait == "survival"),
         legend.key.width = unit(1.25, 'cm'),
         legend.position = "top",
         plot.margin = unit(c(5, 5, 5, 5), 'mm'))
-
+plot.survival
 
 ## Days Post Fertilization
 plot.dpf <- ggplot(filter(traitsOverall.all, trait == "dpf"), 
@@ -271,10 +289,10 @@ plot.dpf <- ggplot(filter(traitsOverall.all, trait == "dpf"),
                 position = position_dodge(0.17), width = 0.3,
                 size = 0.6, linetype = "solid", show.legend = FALSE) +
   scale_x_discrete(expand = c(0, 0.2)) +
-  scale_y_continuous(limits = c(42.5, 60), breaks = seq(45, 60, 5), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(40, 95), breaks = seq(40, 90, 10), expand = c(0, 0)) +
   scale_color_grey("combine", start = 0.0, end = 0.8) +
-  scale_shape_manual("combine", values = c(2, 5, 1, 0)) +
-  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid")) +
+  scale_shape_manual("combine", values = c(2, 5, 1, 0, 6)) +
+  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid", "dotdash")) +
   labs(y = "Mean DPF", x = "Temperature (°C)") +
   theme_bw() +
   theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
@@ -287,6 +305,7 @@ plot.dpf <- ggplot(filter(traitsOverall.all, trait == "dpf"),
         legend.key.width = unit(1.25, 'cm'),
         legend.position = "top",
         plot.margin = unit(c(5, 5, 5, 5), 'mm'))
+plot.dpf
 
 ## Accumulated Degree-Days
 plot.add <- ggplot(filter(traitsOverall.all, trait == "ADD"), 
@@ -299,10 +318,10 @@ plot.add <- ggplot(filter(traitsOverall.all, trait == "ADD"),
                 position = position_dodge(0.17), width = 0.3,
                 size = 0.6, linetype = "solid", show.legend = FALSE) +
   scale_x_discrete(expand = c(0, 0.2)) +
-  scale_y_continuous(limits = c(400, 450), breaks = seq(400, 450, 10), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(400, 600), breaks = seq(400, 600, 25), expand = c(0, 0)) +
   scale_color_grey("combine", start = 0.0, end = 0.8) +
-  scale_shape_manual("combine", values = c(2, 5, 1, 0)) +
-  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid")) +
+  scale_shape_manual("combine", values = c(2, 5, 1, 0, 6)) +
+  scale_linetype_manual("combine", values = c("solid", "dashed", "dotted", "solid", "dotdash")) +
   labs(y = "Mean ADD (°C)", x = "Temperature (°C)") +
   theme_bw() +
   theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
@@ -315,6 +334,7 @@ plot.add <- ggplot(filter(traitsOverall.all, trait == "ADD"),
         legend.key.width = unit(1.25, 'cm'),
         legend.position = "top",
         plot.margin = unit(c(5, 5, 5, 5), 'mm'))
+plot.add
 
 ## Combine all figures
 plot.overall.all <- grid.arrange(
@@ -339,7 +359,7 @@ plot.survival.stand <- ggplot(filter(traitsStand.all, trait == "survival", tempe
   geom_hline(yintercept = 0, color = "black", linetype = "solid", alpha = 0.5) +
   geom_errorbar(aes(ymin = (mean.trait.stand - se.trait.stand), ymax = (mean.trait.stand + se.trait.stand)), 
                 position = position_dodge(0.6), size = 0.8, width = 0.4, show.legend = FALSE) +
-  scale_y_continuous(limits = c(-70.0, 5), breaks = seq(-70.0, 5, 10), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-75.0, 5), breaks = seq(-80.0, 5, 10), expand = c(0, 0)) +
   #scale_color_manual("combine", values = c("#0571b0", "#92c5de", "#f4a582"),
   #                   labels = c("Low ", "Medium ", "High")) +
   labs(y = "Standardized Embryo Survival (%)", x = "Population") +
@@ -362,7 +382,7 @@ plot.dpf.stand <- ggplot(filter(traitsStand.all, trait == "dpf", temperature == 
   geom_hline(yintercept = 0, color = "black", linetype = "solid", alpha = 0.5) +
   geom_errorbar(aes(ymin = (mean.trait.stand - se.trait.stand), ymax = (mean.trait.stand + se.trait.stand)), 
                 position = position_dodge(0.6), size = 0.8, width = 0.4, show.legend = FALSE) +
-  scale_y_continuous(limits = c(-70.0, 5), breaks = seq(-70.0, 5, 10), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-75.0, 5), breaks = seq(-80.0, 5, 10), expand = c(0, 0)) +
   labs(y = "Standardized DPF (%)", x = "Population") +
   theme_bw() +
   theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
@@ -383,7 +403,7 @@ plot.add.stand <- ggplot(filter(traitsStand.all, trait == "ADD", temperature == 
   geom_hline(yintercept = 0, color = "black", linetype = "solid", alpha = 0.5) +
   geom_errorbar(aes(ymin = (mean.trait.stand - se.trait.stand), ymax = (mean.trait.stand + se.trait.stand)), 
                 position = position_dodge(0.6), size = 0.8, width = 0.4, show.legend = FALSE) +
-  scale_y_continuous(limits = c(-70.0, 5), breaks = seq(-70.0, 5, 10), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-75.0, 5), breaks = seq(-80.0, 5, 10), expand = c(0, 0)) +
   labs(y = "Standardized ADD (%)", x = "Population") +
   theme_bw() +
   theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
@@ -408,6 +428,6 @@ plot.stand.all <- grid.arrange(
   heights = c(1.0, 0.04)
 )
 
-ggsave("figures/FigX_2.jpeg", plot = plot.stand.all, width = 16, height = 7, dpi = 600)
+ggsave("figures/FigX_2.jpeg", plot = plot.stand.all, width = 18, height = 9, dpi = 600)
 
 
