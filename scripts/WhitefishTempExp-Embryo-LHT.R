@@ -55,7 +55,7 @@ hatch.survival <- hatch %>% filter(eye != 0)
 ## filter to only hatched embryos
 hatch.survived <- hatch %>% filter(!is.na(dpf), hatch == 1)
 
-4
+
 #### STATISTICAL ANALYSIS - SURVIVAL -----------------------------------------------------
 
 ## backward elimination to select best model
