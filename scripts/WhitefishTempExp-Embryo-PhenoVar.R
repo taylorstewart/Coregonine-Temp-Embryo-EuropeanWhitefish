@@ -175,7 +175,8 @@ phenoVar.embryo.error <- bind_rows(phenoVar.survival.obs, phenoVar.dpf.obs, phen
 
 phenoVar.embryo.all <- left_join(phenoVar.embryo.mean, phenoVar.embryo.error) %>% 
   mutate(trait = factor(trait, ordered = TRUE, levels = c("survival", "dpf", "ADD"),
-                        labels = c("Embryo Survival", "DPF", "ADD")))
+                        labels = c("Embryo Survival", "DPF", "ADD"))) %>% 
+  filter(group != "Konnevesi")
 
 
 #### VISUALIZATION -------------------------------------------------------------------------------
