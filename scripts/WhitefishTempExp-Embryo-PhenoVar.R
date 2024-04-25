@@ -62,7 +62,7 @@ phenoVar.survival.obs <- do.call(rbind, lapply(as.character(unique(hatch.surviva
       select(family, dam, sire, block, hatch)
   
   obs.survival <- observGlmer(observ = data.group, dam = "dam", sire = "sire", response = "hatch",
-                               fam_link = binomial(logit))
+                              fam_link = binomial(link = "logit"))
   
   obs.survival.df <- data.frame(group = substr(grp, 1, nchar(grp)-2),
                                 temperature = as.numeric(substr(grp, nchar(grp), nchar(grp))),
@@ -136,7 +136,7 @@ temp <- data.frame(group = c("konnevesi.littoral", "konnevesi.littoral",
                              "constance.littoral", "constance.littoral",
                              "leman.littoral", "leman.littoral",
                              "bourget.littoral", "bourget.littoral"),
-                   temperature = factor(c(rep(c(7, 9),5)), ordered = TRUE, levels = c(7, 9)))
+                   temperature = factor(c(7, 8, rep(c(7, 9), 4)), ordered = TRUE, levels = c(7, 8, 9)))
 
 
 #### CALCUALTE MEAN VARIANCE ACROSS TEMPERATURES -------------------------------------------------
@@ -152,7 +152,7 @@ phenoVar.embryo.mean <- bind_rows(phenoVar.survival.obs, phenoVar.dpf.obs, pheno
                             levels = c("dam.perc.mean", "sire.perc.mean", "dam.sire.perc.mean", "residual.perc.mean"),
                             labels = c("Dam", "Sire", "Dam.Sire", "Error")),
          group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
-                        labels = c("Konnevesi", "Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
+                        labels = c("S. Konnevesi", "Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
 
 
 #### CALCUALTE ERROR ACROSS TEMPERATURES ---------------------------------------------------------
@@ -168,15 +168,14 @@ phenoVar.embryo.error <- bind_rows(phenoVar.survival.obs, phenoVar.dpf.obs, phen
                             levels = c("dam.perc.se", "sire.perc.se", "dam.sire.perc.se", "residual.perc.se"),
                             labels = c("Dam", "Sire", "Dam.Sire", "Error")),
          group = factor(group, ordered = TRUE, levels = c("konnevesi.littoral", "constance.pelagic", "constance.littoral", "leman.littoral", "bourget.littoral"),
-                        labels = c("Konnevesi", "Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
+                        labels = c("S. Konnevesi", "Constance\n(Pelagic)", "Constance\n(Littoral)", "Geneva", "Bourget")))
 
 
 #### JOIN MEAN AND ERROR -------------------------------------------------------------------------
 
 phenoVar.embryo.all <- left_join(phenoVar.embryo.mean, phenoVar.embryo.error) %>% 
   mutate(trait = factor(trait, ordered = TRUE, levels = c("survival", "dpf", "ADD"),
-                        labels = c("Embryo Survival", "DPF", "ADD"))) %>% 
-  filter(group != "Konnevesi")
+                        labels = c("Embryo Survival", "Days Post-fertilization", "Accumulated Degrees-days")))
 
 
 #### VISUALIZATION -------------------------------------------------------------------------------
@@ -186,30 +185,27 @@ ggplot(phenoVar.embryo.all, aes(x = group, y = variance, group = component, fill
   geom_bar(stat = "identity", size = 0.2, position = position_dodge(0.9), color = "black") +
   geom_errorbar(aes(ymin = ifelse(variance - error < 0, 0, variance - error), 
                     ymax = ifelse(variance + error > 100, 99.5, variance + error)), 
-                position = position_dodge(0.9), size = 0.4, width = 0.4, color = "gray15", show.legend = FALSE) +
+                position = position_dodge(0.9), size = 0.5, width = 0.4, color = "gray15", show.legend = FALSE) +
   scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
   scale_x_discrete(expand = c(0, 0.5)) +
   scale_fill_manual(values = c("#7bccc4", "#f0f9e8", "#bae4bc", "#2b8cbe"),
                     labels = c("Female  ", "Male  ", "Female x Male  ", "Residual Error")) +
-  #annotation_custom(textGrob("Coldest-Cold-Warm-Warmest", gp = gpar(fontsize = 15, col = "grey30")), 
-  #                  xmin = 2, xmax = 2, ymin = -7.5, ymax = -7.5) +
-  labs(y = "% of Total Phenotypic Variation", x = "Study Group") + #\nTemperature Treatment") +
+  labs(y = "% of Total Phenotypic Variation", x = "Population") +
   theme_bw() +
-  theme(axis.title.x = element_text(color = "Black", size = 22, margin = margin(10, 0, 0, 0)),
-        axis.title.y = element_text(color = "Black", size = 22, margin = margin(0, 10, 0, 0)),
-        axis.text.x = element_text(angle = 45, hjust = 1, size = 18),
-        axis.text.y = element_text(size = 18),
+  theme(axis.title.x = element_text(color = "Black", size = 20, margin = margin(10, 0, 0, 0)),
+        axis.title.y = element_text(color = "Black", size = 20, margin = margin(0, 10, 0, 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 17),
+        axis.text.y = element_text(size = 17),
         axis.ticks.length = unit(2, 'mm'),
         legend.title = element_blank(),
         legend.text = element_text(size = 20),
-        legend.key.size = unit(1.25, 'cm'),
+        legend.key.size = unit(1, 'cm'),
         legend.position = "top",
         strip.text = element_text(size = 18),
         strip.background = element_rect(color = "transparent", fill = "white"),
+        panel.spacing = unit(1.5, "lines"),
         plot.margin = unit(c(5, 5, 5, 5), 'mm')) +
   facet_wrap(~trait)
 
 ## Save figure
-ggsave("figures/FigX_3.jpeg", width = 18, height = 9, dpi = 600)
-
-
+ggsave("figures/Fig2-PhenoVar.png", width = 14, height = 7, dpi = 600)
